@@ -27,14 +27,14 @@ import {
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 
-// Main login schema
+// Login schema
 const LoginSchema = z.object({
   email: z.string().email({ message: "Please enter a valid email address." }),
   password: z.string().min(6, { message: "Password must be at least 6 characters." }),
   remember: z.boolean().optional(),
 });
 
-// Reset password schema
+// Reset schema
 const ResetSchema = z.object({
   email: z.string().email({ message: "Please enter a registered email address." }),
 });
@@ -60,22 +60,44 @@ export default function LoginV1() {
   });
 
   const onLoginSubmit = async (data: z.infer<typeof LoginSchema>) => {
-    toast("You submitted the following values", {
-      description: (
-        <pre className="mt-2 w-[320px] rounded-md bg-neutral-950 p-4">
-          <code className="text-white">{JSON.stringify(data, null, 2)}</code>
-        </pre>
-      ),
-    });
+    try {
+      const res = await fetch("https://23838aa5981f.ngrok-free.app/api/admin-login/", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          email: data.email,
+          password: data.password,
+        }),
+      });
 
-    // TODO: Integrate login API here
+      if (!res.ok) throw new Error("Invalid email or password");
+
+      const result = await res.json();
+      localStorage.setItem("access_token", result.token);
+      // localStorage.setItem("refresh_token", result.refresh);
+      toast.success("Login successful");
+      window.location.href = "/dashboard";
+    } catch (err) {
+      toast.error((err as Error).message || "Login failed");
+    }
   };
 
   const onResetSubmit = async (data: z.infer<typeof ResetSchema>) => {
-    // TODO: Integrate password reset email API here
-    console.log("Reset request for:", data.email);
-    setShowResetForm(false);
-    setShowResetSent(true);
+    try {
+      const res = await fetch("https://23838aa5981f.ngrok-free.app/api/admin/password-reset/", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: data.email }),
+      });
+
+      if (!res.ok) throw new Error("Could not send reset link");
+
+      toast.success("Reset link sent");
+      setShowResetForm(false);
+      setShowResetSent(true);
+    } catch (err) {
+      toast.error((err as Error).message || "Reset failed");
+    }
   };
 
   return (
@@ -97,7 +119,7 @@ export default function LoginV1() {
         </div>
       </div>
 
-      {/* Right Side - Login Form */}
+      {/* Right Side */}
       <div className="bg-background flex w-full items-center justify-center p-8 lg:w-2/3">
         <div className="w-full max-w-md space-y-10 py-24 lg:py-32">
           <div className="space-y-4 text-center">
@@ -221,7 +243,7 @@ export default function LoginV1() {
         </DialogContent>
       </Dialog>
 
-      {/* Reset Confirmation Modal */}
+      {/* Reset Sent Modal */}
       <Dialog open={showResetSent} onOpenChange={setShowResetSent}>
         <DialogContent className="max-w-md text-center">
           <DialogHeader>

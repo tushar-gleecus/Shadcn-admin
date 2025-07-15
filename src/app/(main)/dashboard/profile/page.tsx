@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Image from "next/image";
 import {
   Card,
@@ -20,14 +20,60 @@ import {
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
+import { toast } from "sonner";
 
 export default function AdminProfilePage() {
   const [editOpen, setEditOpen] = useState(false);
+  const [formData, setFormData] = useState({
+    first_name: "",
+    last_name: "",
+    email: "",
+    username: "",
+    phone: "",
+    address: "",
+  });
+
+  useEffect(() => {
+    const token = localStorage.getItem("access_token");
+    if (!token) return;
+
+    fetch("https://23838aa5981f.ngrok-free.app/api/admin/profile/", {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    })
+      .then((res) => res.json())
+      .then((data) => setFormData(data))
+      .catch(console.error);
+  }, []);
+
+  const handleChange = (e: any) => {
+    setFormData((prev) => ({ ...prev, [e.target.id]: e.target.value }));
+  };
+
+  const handleProfileUpdate = async () => {
+    const token = localStorage.getItem("access_token");
+
+    const res = await fetch("https://23838aa5981f.ngrok-free.app/api/admin/profile/", {
+      method: "PUT",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify(formData),
+    });
+
+    if (!res.ok) {
+      toast.error("Update failed");
+    } else {
+      toast.success("Profile updated");
+      setEditOpen(false);
+    }
+  };
 
   return (
     <div className="p-6">
       <div className="grid grid-cols-1 gap-4 xl:grid-cols-[70%_30%] items-start">
-        {/* Admin Info Card */}
         <Card className="@container/card">
           <CardHeader>
             <CardTitle>Admin Information</CardTitle>
@@ -44,34 +90,15 @@ export default function AdminProfilePage() {
                 />
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 flex-1">
-                <div>
-                  <Label>First Name</Label>
-                  <Input disabled value="Tushar" />
-                </div>
-                <div>
-                  <Label>Last Name</Label>
-                  <Input disabled value="Canchi" />
-                </div>
-                <div className="col-span-2">
-                  <Label>Email</Label>
-                  <Input disabled value="tushar.canchi@gleecus.com" />
-                </div>
-                <div className="col-span-2">
-                  <Label>Username</Label>
-                  <Input disabled value="admin_user" />
-                </div>
-                <div className="col-span-2">
-                  <Label>Phone</Label>
-                  <Input disabled value="+91 9999999999" />
-                </div>
-                <div className="col-span-2">
-                  <Label>Address</Label>
-                  <Input disabled value="Hyderabad, India" />
-                </div>
+                {["first_name", "last_name", "email", "username", "phone", "address"].map((field) => (
+                  <div key={field} className={field === "email" || field === "username" || field === "phone" || field === "address" ? "col-span-2" : ""}>
+                    <Label>{field.replace(/_/g, " ").replace(/\b\w/g, l => l.toUpperCase())}</Label>
+                    <Input disabled value={formData[field as keyof typeof formData] || ""} />
+                  </div>
+                ))}
               </div>
             </div>
 
-            {/* Buttons Row */}
             <div className="flex justify-end gap-4 pt-2">
               <Button size="sm">Change Photo</Button>
               <Dialog open={editOpen} onOpenChange={setEditOpen}>
@@ -84,33 +111,31 @@ export default function AdminProfilePage() {
                     <DialogDescription>Update your profile info below.</DialogDescription>
                   </DialogHeader>
                   <form className="grid grid-cols-1 sm:grid-cols-2 gap-4 py-4">
-                    <div className="space-y-1">
-                      <Label htmlFor="firstName">First Name</Label>
-                      <Input id="firstName" defaultValue="Tushar" />
-                    </div>
-                    <div className="space-y-1">
-                      <Label htmlFor="lastName">Last Name</Label>
-                      <Input id="lastName" defaultValue="Canchi" />
-                    </div>
-                    <div className="space-y-1 col-span-2">
-                      <Label htmlFor="email">Email</Label>
-                      <Input id="email" type="email" defaultValue="tushar.canchi@gleecus.com" />
-                    </div>
-                    <div className="space-y-1 col-span-2">
-                      <Label htmlFor="username">Username</Label>
-                      <Input id="username" defaultValue="admin_user" />
-                    </div>
-                    <div className="space-y-1 col-span-2">
-                      <Label htmlFor="phone">Phone</Label>
-                      <Input id="phone" defaultValue="+91 9999999999" />
-                    </div>
-                    <div className="space-y-1 col-span-2">
-                      <Label htmlFor="address">Address</Label>
-                      <Input id="address" defaultValue="Hyderabad, India" />
-                    </div>
+                    {Object.keys(formData).map((key) => (
+                      <div
+                        key={key}
+                        className={
+                          key === "email" ||
+                          key === "username" ||
+                          key === "phone" ||
+                          key === "address"
+                            ? "space-y-1 col-span-2"
+                            : "space-y-1"
+                        }
+                      >
+                        <Label htmlFor={key}>{key.replace(/_/g, " ").replace(/\b\w/g, l => l.toUpperCase())}</Label>
+                        <Input
+                          id={key}
+                          value={formData[key as keyof typeof formData]}
+                          onChange={handleChange}
+                        />
+                      </div>
+                    ))}
                   </form>
                   <DialogFooter>
-                    <Button type="submit">Save Changes</Button>
+                    <Button type="button" onClick={handleProfileUpdate}>
+                      Save Changes
+                    </Button>
                   </DialogFooter>
                 </DialogContent>
               </Dialog>
@@ -118,10 +143,9 @@ export default function AdminProfilePage() {
           </CardContent>
         </Card>
 
-        {/* Reset Password Card */}
         <Card className="@container/card">
           <CardHeader>
-            <CardTitle>Reset Password</CardTitle>
+            <CardTitle>Change Password</CardTitle>
           </CardHeader>
           <CardContent className="flex flex-col justify-between h-full">
             <form className="flex flex-col justify-between h-full space-y-4">
@@ -133,7 +157,9 @@ export default function AdminProfilePage() {
                 <Label htmlFor="confirmPassword">Confirm Password</Label>
                 <Input id="confirmPassword" type="password" placeholder="Confirm password" />
               </div>
-              <Button type="submit" className="w-full mt-4">Submit</Button>
+              <Button type="submit" className="w-full mt-4">
+                Submit
+              </Button>
             </form>
           </CardContent>
         </Card>

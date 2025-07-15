@@ -37,15 +37,24 @@ export default function RegisterV1() {
   });
 
   const onSubmit = async (data: z.infer<typeof FormSchema>) => {
-    toast("You submitted the following values", {
-      description: (
-        <pre className="mt-2 w-[320px] rounded-md bg-neutral-950 p-4">
-          <code className="text-white">{JSON.stringify(data, null, 2)}</code>
-        </pre>
-      ),
-    });
+    try {
+      const urlParams = new URLSearchParams(window.location.search);
+      const token = urlParams.get("token");
+      if (!token) throw new Error("Invalid or missing token");
 
-    // TODO: Replace above with actual API call (e.g., resetPassword API)
+      const res = await fetch("https://23838aa5981f.ngrok-free.app/api/admin/password-reset/", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ token, password: data.password }),
+      });
+
+      if (!res.ok) throw new Error("Password reset failed");
+
+      toast.success("Password reset successful. You can now log in.");
+      window.location.href = "/auth/v1/login";
+    } catch (err) {
+      toast.error((err as Error).message || "Something went wrong");
+    }
   };
 
   return (
@@ -60,7 +69,6 @@ export default function RegisterV1() {
             </div>
           </div>
 
-          {/* Merged RegisterForm */}
           <Form {...form}>
             <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
               <FormField
