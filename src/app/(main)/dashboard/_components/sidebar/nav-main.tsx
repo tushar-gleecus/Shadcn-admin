@@ -168,16 +168,15 @@ export function NavMain({ items }: NavMainProps) {
   const path = usePathname();
   const { state, isMobile } = useSidebar();
 
-  const isItemActive = (url: string, subItems?: NavMainItem["subItems"]) => {
-    if (subItems?.length) {
-      return subItems.some((sub) => path.startsWith(sub.url));
-    }
-    return path === url;
-  };
+  const isItemActive = (url: string) => {
+  return path === url;
+};
+
 
   const isSubmenuOpen = (subItems?: NavMainItem["subItems"]) => {
-    return subItems?.some((sub) => path.startsWith(sub.url)) ?? false;
-  };
+  return subItems?.some((sub) => path === sub.url) ?? false;
+};
+
 
   return (
     <>

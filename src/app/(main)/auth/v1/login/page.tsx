@@ -1,3 +1,4 @@
+//v1/login
 "use client";
 
 import { useState } from "react";
@@ -6,7 +7,7 @@ import Link from "next/link";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { toast } from "sonner";
-import { MailCheck } from "lucide-react";
+import { MailCheck, Eye, EyeOff } from "lucide-react";
 
 import {
   Dialog,
@@ -25,6 +26,7 @@ import {
   FormLabel,
   FormMessage,
 } from "@/components/ui/form";
+import apiClient from "@/lib/api-client";
 import { Input } from "@/components/ui/input";
 
 // Login schema
@@ -42,6 +44,7 @@ const ResetSchema = z.object({
 export default function LoginV1() {
   const [showResetForm, setShowResetForm] = useState(false);
   const [showResetSent, setShowResetSent] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
 
   const loginForm = useForm<z.infer<typeof LoginSchema>>({
     resolver: zodResolver(LoginSchema),
@@ -59,44 +62,45 @@ export default function LoginV1() {
     },
   });
 
+  // --- MAIN UPDATED PART ---
   const onLoginSubmit = async (data: z.infer<typeof LoginSchema>) => {
     try {
-      const res = await fetch("https://23838aa5981f.ngrok-free.app/api/admin-login/", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          email: data.email,
-          password: data.password,
-        }),
+      const res = await apiClient.post("/api/admins/login/", {
+        email: data.email,
+        password: data.password,
       });
 
-      if (!res.ok) throw new Error("Invalid email or password");
+      const result = res.data;
 
-      const result = await res.json();
+      // Store login details and profile info in localStorage
       localStorage.setItem("access_token", result.token);
-      // localStorage.setItem("refresh_token", result.refresh);
+      localStorage.setItem("admin_id", result.admin.id);
+
+      // NEW: Save these details for AccountSwitcher/profile display
+      localStorage.setItem(
+        "admin_name",
+        `${result.admin.first_name || ""} ${result.admin.last_name || ""}`.trim()
+      );
+      localStorage.setItem("admin_email", result.admin.email || "");
+      localStorage.setItem("admin_photo", result.admin.photo || "/avatars/neutral.jpg");
+
       toast.success("Login successful");
       window.location.href = "/dashboard";
-    } catch (err) {
-      toast.error((err as Error).message || "Login failed");
+    } catch (err: any) {
+      toast.error(err.response?.data?.detail || "Login failed");
     }
   };
+  // --- END UPDATED PART ---
 
   const onResetSubmit = async (data: z.infer<typeof ResetSchema>) => {
     try {
-      const res = await fetch("https://23838aa5981f.ngrok-free.app/api/admin/password-reset/", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: data.email }),
-      });
-
-      if (!res.ok) throw new Error("Could not send reset link");
+      await apiClient.post("/api/admins/password/reset/", { email: data.email });
 
       toast.success("Reset link sent");
       setShowResetForm(false);
       setShowResetSent(true);
-    } catch (err) {
-      toast.error((err as Error).message || "Reset failed");
+    } catch (err: any) {
+      toast.error(err.response?.data?.detail || "Reset failed");
     }
   };
 
@@ -156,15 +160,25 @@ export default function LoginV1() {
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>Password</FormLabel>
-                    <FormControl>
-                      <Input
-                        id="password"
-                        type="password"
-                        placeholder="••••••••"
-                        autoComplete="current-password"
-                        {...field}
-                      />
-                    </FormControl>
+                    <div className="relative">
+                      <FormControl>
+                        <Input
+                          id="password"
+                          type={showPassword ? "text" : "password"}
+                          placeholder="••••••••"
+                          autoComplete="current-password"
+                          {...field}
+                        />
+                      </FormControl>
+                      <button
+                        type="button"
+                        className="absolute right-3 top-2/4 transform -translate-y-1/2 text-muted-foreground"
+                        onClick={() => setShowPassword((prev) => !prev)}
+                        tabIndex={-1}
+                      >
+                        {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                      </button>
+                    </div>
                     <FormMessage />
                   </FormItem>
                 )}

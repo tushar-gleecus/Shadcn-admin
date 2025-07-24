@@ -1,7 +1,11 @@
+//profile
 "use client";
 
 import { useState, useEffect } from "react";
 import Image from "next/image";
+import Link from "next/link";
+import PhoneInput from "react-phone-input-2";
+import "react-phone-input-2/lib/style.css";
 import {
   Card,
   CardContent,
@@ -16,121 +20,442 @@ import {
   DialogHeader,
   DialogTitle,
   DialogTrigger,
+  DialogClose,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
+import { Eye, EyeOff, Upload } from "lucide-react";
+import {
+  Breadcrumb,
+  BreadcrumbItem,
+  BreadcrumbLink,
+  BreadcrumbList,
+  BreadcrumbPage,
+  BreadcrumbSeparator,
+} from "@/components/ui/breadcrumb";
+import apiClient from "@/lib/api-client";
+
+// -- helper to always return a valid image src
+function getProfileImageSrc(photo: string | null | undefined) {
+  if (!photo) return "/woman-whisper.jpg";
+  if (photo.startsWith("http")) return photo;
+  return photo.startsWith("/") ? photo : "/" + photo;
+}
+
+const COUNTRY_LIST = [
+  "India", "United Kingdom", "United States", "Canada", "Australia",
+  "Germany", "France", "Japan", "China", "Brazil", "South Africa", "Italy", "Spain", "Netherlands", "Sweden",
+];
 
 export default function AdminProfilePage() {
   const [editOpen, setEditOpen] = useState(false);
+  const [photoModalOpen, setPhotoModalOpen] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [selectedPhoto, setSelectedPhoto] = useState<File | null>(null);
+
+  // For country typeahead in modal
+  const [countryQuery, setCountryQuery] = useState("");
+  const [showCountryDropdown, setShowCountryDropdown] = useState(false);
+
   const [formData, setFormData] = useState({
+    id: "",
+    email: "",
     first_name: "",
     last_name: "",
-    email: "",
-    username: "",
     phone: "",
-    address: "",
+    city: "",
+    country: "",
+    photo: null as string | null,
   });
 
+  // Fetch admin id from localStorage
   useEffect(() => {
-    const token = localStorage.getItem("access_token");
-    if (!token) return;
+    const adminId = localStorage.getItem("admin_id");
+    if (!adminId) return;
 
-    fetch("https://23838aa5981f.ngrok-free.app/api/admin/profile/", {
-      headers: {
-        Authorization: `Bearer ${token}`,
-      },
-    })
-      .then((res) => res.json())
-      .then((data) => setFormData(data))
-      .catch(console.error);
+    apiClient.get(`/api/admins/${adminId}/`)
+      .then((res) => {
+        const data = res.data;
+        setFormData({
+          id: data.id || "",
+          email: data.email || "",
+          first_name: data.first_name || "",
+          last_name: data.last_name || "",
+          phone: data.phone || "",
+          city: data.city || "",
+          country: data.country || "",
+          photo: data.photo || null,
+        });
+        // Update localStorage (for name, email, photo) for use in AccountSwitcher
+        localStorage.setItem("admin_name", (data.first_name || "") + (data.last_name ? ` ${data.last_name}` : ""));
+        localStorage.setItem("admin_email", data.email || "");
+        localStorage.setItem("admin_photo", data.photo || "/avatars/neutral.jpg");
+      })
+      .catch(() => {
+        toast.error("Could not fetch profile.");
+      });
   }, []);
 
+  // Country dropdown close on click away
+  useEffect(() => {
+    function handleClick() {
+      setShowCountryDropdown(false);
+    }
+    if (showCountryDropdown) {
+      window.addEventListener("click", handleClick);
+      return () => window.removeEventListener("click", handleClick);
+    }
+  }, [showCountryDropdown]);
+
   const handleChange = (e: any) => {
-    setFormData((prev) => ({ ...prev, [e.target.id]: e.target.value }));
+    const { id, value } = e.target;
+    setFormData((prev) => ({ ...prev, [id]: value }));
   };
 
   const handleProfileUpdate = async () => {
-    const token = localStorage.getItem("access_token");
+    const adminId = localStorage.getItem("admin_id");
+    if (!adminId) return;
 
-    const res = await fetch("https://23838aa5981f.ngrok-free.app/api/admin/profile/", {
-      method: "PUT",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${token}`,
-      },
-      body: JSON.stringify(formData),
-    });
-
-    if (!res.ok) {
-      toast.error("Update failed");
-    } else {
-      toast.success("Profile updated");
+    try {
+      await apiClient.put(`/api/admins/update/${adminId}/`, formData);
+      toast.success("Profile updated successfully");
+      // Update name/email in localStorage
+      localStorage.setItem("admin_name", (formData.first_name || "") + (formData.last_name ? ` ${formData.last_name}` : ""));
+      localStorage.setItem("admin_email", formData.email || "");
+      window.dispatchEvent(new Event("profile-photo-changed")); // for completeness, fire event for name/email change
       setEditOpen(false);
+    } catch (err) {
+      toast.error("Profile update failed");
+    }
+  };
+
+  const handlePasswordChange = async (e: any) => {
+    e.preventDefault();
+    if (newPassword !== confirmPassword) {
+      toast.error("Passwords do not match");
+      return;
+    }
+    try {
+      await apiClient.post("/api/password_change/", {
+        new_password1: newPassword,
+        new_password2: confirmPassword,
+      });
+      toast.success("Password changed successfully");
+      setNewPassword("");
+      setConfirmPassword("");
+    } catch (err) {
+      toast.error("Password change failed");
+    }
+  };
+
+  const handlePhotoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0]) {
+      setSelectedPhoto(e.target.files[0]);
+    }
+  };
+
+  const handleDragOver = (e: React.DragEvent<HTMLLabelElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    e.currentTarget.classList.add("border-primary");
+  };
+
+  const handleDragLeave = (e: React.DragEvent<HTMLLabelElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    e.currentTarget.classList.remove("border-primary");
+  };
+
+  const handleDrop = (e: React.DragEvent<HTMLLabelElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    e.currentTarget.classList.remove("border-primary");
+    if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+      setSelectedPhoto(e.dataTransfer.files[0]);
+    }
+  };
+
+  const handlePhotoUpload = async () => {
+    if (!selectedPhoto) {
+      toast.error("Please select a photo to upload.");
+      return;
+    }
+
+    const formDataToSend = new FormData();
+    formDataToSend.append("photo", selectedPhoto);
+
+    try {
+      const res = await apiClient.post(
+        `/api/admins/photo/upload/`,
+        formDataToSend,
+        {
+          headers: {
+            "Content-Type": "multipart/form-data",
+          },
+        }
+      );
+
+      const result = res.data;
+
+      toast.success("Photo uploaded successfully!");
+      setFormData((prev) => ({
+        ...prev,
+        photo: result.photo_url ?? prev.photo,
+      }));
+      // ---- LOCAL STORAGE UPDATE ----
+      localStorage.setItem("admin_photo", result.photo_url);
+      window.dispatchEvent(new Event("profile-photo-changed"));
+      // -----------------------------
+      setSelectedPhoto(null);
+      setPhotoModalOpen(false);
+    } catch (error) {
+      toast.error("An error occurred during photo upload.");
     }
   };
 
   return (
     <div className="p-6">
-      <div className="grid grid-cols-1 gap-4 xl:grid-cols-[70%_30%] items-start">
-        <Card className="@container/card">
+      {/* Breadcrumbs */}
+      <Breadcrumb>
+        <BreadcrumbList>
+          <BreadcrumbItem>
+            <BreadcrumbLink asChild>
+              <Link href="/dashboard">Home</Link>
+            </BreadcrumbLink>
+          </BreadcrumbItem>
+          <BreadcrumbSeparator />
+          <BreadcrumbItem>
+            <BreadcrumbPage>Profile</BreadcrumbPage>
+          </BreadcrumbItem>
+        </BreadcrumbList>
+      </Breadcrumb>
+      <div className="grid grid-cols-1 gap-4 xl:grid-cols-[70%_30%] items-start mt-4">
+        {/* Profile Card */}
+        <Card className="@container/card h-full min-h-[410px]">
           <CardHeader>
             <CardTitle>Admin Information</CardTitle>
           </CardHeader>
-          <CardContent className="flex flex-col gap-6">
+          <CardContent className="flex flex-col gap-8">
             <div className="flex flex-col sm:flex-row gap-6">
               <div className="flex-shrink-0">
                 <Image
-                  src="/woman-whisper.jpg"
+                  src={getProfileImageSrc(formData.photo)}
                   alt="Admin Avatar"
-                  width={80}
-                  height={80}
+                  width={72}
+                  height={72}
                   className="rounded-full border object-cover"
+                  unoptimized={process.env.NODE_ENV === "development"}
                 />
               </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 flex-1">
-                {["first_name", "last_name", "email", "username", "phone", "address"].map((field) => (
-                  <div key={field} className={field === "email" || field === "username" || field === "phone" || field === "address" ? "col-span-2" : ""}>
-                    <Label>{field.replace(/_/g, " ").replace(/\b\w/g, l => l.toUpperCase())}</Label>
-                    <Input disabled value={formData[field as keyof typeof formData] || ""} />
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-5 flex-1">
+                <div>
+                  <div className="text-xs text-zinc-500 uppercase tracking-wide mb-0.5 dark:text-zinc-400">
+                    First Name
                   </div>
-                ))}
+                  <div className="text-sm text-zinc-800 dark:text-zinc-200">
+                    {formData.first_name || <span className="text-zinc-400 dark:text-zinc-600">N/A</span>}
+                  </div>
+                </div>
+                <div>
+                  <div className="text-xs text-zinc-500 uppercase tracking-wide mb-0.5 dark:text-zinc-400">
+                    Last Name
+                  </div>
+                  <div className="text-sm text-zinc-800 dark:text-zinc-200">
+                    {formData.last_name || <span className="text-zinc-400 dark:text-zinc-600">N/A</span>}
+                  </div>
+                </div>
+                <div>
+                  <div className="text-xs text-zinc-500 uppercase tracking-wide mb-0.5 dark:text-zinc-400">
+                    Email
+                  </div>
+                  <div className="text-sm text-zinc-800 dark:text-zinc-200 break-all">
+                    {formData.email || <span className="text-zinc-400 dark:text-zinc-600">N/A</span>}
+                  </div>
+                </div>
+                <div>
+                  <div className="text-xs text-zinc-500 uppercase tracking-wide mb-0.5 dark:text-zinc-400">
+                    Phone
+                  </div>
+                  <div className="text-sm text-zinc-800 dark:text-zinc-200">
+                    {formData.phone || <span className="text-zinc-400 dark:text-zinc-600">N/A</span>}
+                  </div>
+                </div>
+                <div>
+                  <div className="text-xs text-zinc-500 uppercase tracking-wide mb-0.5 dark:text-zinc-400">
+                    City
+                  </div>
+                  <div className="text-sm text-zinc-800 dark:text-zinc-200">
+                    {formData.city || <span className="text-zinc-400 dark:text-zinc-600">N/A</span>}
+                  </div>
+                </div>
+                <div>
+                  <div className="text-xs text-zinc-500 uppercase tracking-wide mb-0.5 dark:text-zinc-400">
+                    Country
+                  </div>
+                  <div className="text-sm text-zinc-800 dark:text-zinc-200">
+                    {formData.country || <span className="text-zinc-400 dark:text-zinc-600">N/A</span>}
+                  </div>
+                </div>
               </div>
             </div>
-
             <div className="flex justify-end gap-4 pt-2">
-              <Button size="sm">Change Photo</Button>
+              {/* Update Photo Dialog */}
+              <Dialog open={photoModalOpen} onOpenChange={setPhotoModalOpen}>
+                <DialogTrigger asChild>
+                  <Button size="sm" variant="outline">
+                    Update Photo
+                  </Button>
+                </DialogTrigger>
+                <DialogContent>
+                  <DialogHeader className="pb-4">
+                    <DialogTitle>Update Photo</DialogTitle>
+                  </DialogHeader>
+                  <div className="flex flex-col items-center gap-4 py-4">
+                    <label
+                      htmlFor="photo-upload"
+                      className="border-2 border-dashed rounded-md p-6 cursor-pointer flex flex-col items-center justify-center text-muted-foreground hover:border-primary"
+                      onDragOver={handleDragOver}
+                      onDragLeave={handleDragLeave}
+                      onDrop={handleDrop}
+                    >
+                      <Upload className="w-8 h-8 mb-2" />
+                      <span>Drag and drop or click to select a photo</span>
+                      <input
+                        id="photo-upload"
+                        type="file"
+                        accept="image/*"
+                        className="hidden"
+                        onChange={handlePhotoChange}
+                      />
+                    </label>
+                    {selectedPhoto && (
+                      <div className="text-sm text-center">
+                        Selected: <span className="font-medium">{selectedPhoto.name}</span>
+                      </div>
+                    )}
+                  </div>
+                  <DialogFooter>
+                    <DialogClose asChild>
+                      <Button type="button" variant="outline">Cancel</Button>
+                    </DialogClose>
+                    <Button type="button" onClick={handlePhotoUpload} disabled={!selectedPhoto}>
+                      Upload
+                    </Button>
+                  </DialogFooter>
+                </DialogContent>
+              </Dialog>
+              {/* Edit Details Dialog */}
               <Dialog open={editOpen} onOpenChange={setEditOpen}>
                 <DialogTrigger asChild>
-                  <Button size="sm">Edit Details</Button>
+                  <Button size="sm" variant="outline">
+                    Update Details
+                  </Button>
                 </DialogTrigger>
                 <DialogContent className="max-w-2xl">
                   <DialogHeader>
                     <DialogTitle>Edit Admin Details</DialogTitle>
-                    <DialogDescription>Update your profile info below.</DialogDescription>
+                    <DialogDescription>
+                      Update your profile info below.
+                    </DialogDescription>
                   </DialogHeader>
-                  <form className="grid grid-cols-1 sm:grid-cols-2 gap-4 py-4">
-                    {Object.keys(formData).map((key) => (
-                      <div
-                        key={key}
-                        className={
-                          key === "email" ||
-                          key === "username" ||
-                          key === "phone" ||
-                          key === "address"
-                            ? "space-y-1 col-span-2"
-                            : "space-y-1"
-                        }
-                      >
-                        <Label htmlFor={key}>{key.replace(/_/g, " ").replace(/\b\w/g, l => l.toUpperCase())}</Label>
-                        <Input
-                          id={key}
-                          value={formData[key as keyof typeof formData]}
-                          onChange={handleChange}
-                        />
-                      </div>
-                    ))}
+                  <form
+                    className="grid grid-cols-1 sm:grid-cols-2 gap-4 py-4"
+                    onSubmit={e => { e.preventDefault(); handleProfileUpdate(); }}
+                  >
+                    <div className="col-span-2 space-y-1">
+                      <Label htmlFor="email">Email</Label>
+                      <Input
+                        id="email"
+                        type="email"
+                        value={formData.email}
+                        onChange={handleChange}
+                        className="bg-white border border-zinc-400 focus:border-zinc-600"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <Label htmlFor="first_name">First Name</Label>
+                      <Input
+                        id="first_name"
+                        value={formData.first_name}
+                        onChange={handleChange}
+                        className="bg-white border border-zinc-400 focus:border-zinc-600"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <Label htmlFor="last_name">Last Name</Label>
+                      <Input
+                        id="last_name"
+                        value={formData.last_name}
+                        onChange={handleChange}
+                        className="bg-white border border-zinc-400 focus:border-zinc-600"
+                      />
+                    </div>
+                    {/* Phone with react-phone-input-2 */}
+                    <div className="col-span-2 space-y-1">
+                      <Label>Phone</Label>
+                      <PhoneInput
+                        country={"in"}
+                        value={formData.phone}
+                        onChange={phone => setFormData(prev => ({ ...prev, phone }))}
+                        inputProps={{
+                          name: "phone",
+                          autoComplete: "off",
+                        }}
+                        inputClass="w-full bg-white border border-zinc-400 focus:border-zinc-600"
+                        buttonClass="bg-white"
+                        containerClass="rounded"
+                      />
+                    </div>
+                    {/* City */}
+                    <div className="col-span-2 space-y-1">
+                      <Label htmlFor="city">City</Label>
+                      <Input
+                        id="city"
+                        value={formData.city}
+                        onChange={handleChange}
+                        className="bg-white border border-zinc-400 focus:border-zinc-600"
+                      />
+                    </div>
+                    {/* Country with Typeahead */}
+                    <div className="col-span-2 space-y-1 relative">
+                      <Label htmlFor="country">Country</Label>
+                      <Input
+                        id="country"
+                        value={formData.country}
+                        onChange={(e) => {
+                          handleChange(e);
+                          setCountryQuery(e.target.value);
+                          setShowCountryDropdown(true);
+                        }}
+                        autoComplete="off"
+                        className="bg-white border border-zinc-400 focus:border-zinc-600"
+                      />
+                      {showCountryDropdown && countryQuery && (
+                        <div className="absolute z-10 bg-white border rounded shadow w-full max-h-40 overflow-auto">
+                          {COUNTRY_LIST.filter(
+                            (name) =>
+                              name.toLowerCase().includes(countryQuery.toLowerCase())
+                          ).map((name) => (
+                            <div
+                              key={name}
+                              className="px-3 py-1 hover:bg-blue-100 cursor-pointer"
+                              onClick={() => {
+                                setFormData((prev) => ({ ...prev, country: name }));
+                                setCountryQuery(name);
+                                setShowCountryDropdown(false);
+                              }}
+                            >
+                              {name}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
                   </form>
                   <DialogFooter>
                     <Button type="button" onClick={handleProfileUpdate}>
@@ -143,21 +468,57 @@ export default function AdminProfilePage() {
           </CardContent>
         </Card>
 
-        <Card className="@container/card">
+        {/* Change Password Card */}
+        <Card className="@container/card h-full min-h-[410px] flex flex-col">
           <CardHeader>
-            <CardTitle>Change Password</CardTitle>
+            <CardTitle className="text-xl">Change Password</CardTitle>
+            <p className="text-muted-foreground text-sm mt-2">
+              Please enter a strong password with at least one uppercase letter, one number, and one special character.
+            </p>
           </CardHeader>
-          <CardContent className="flex flex-col justify-between h-full">
-            <form className="flex flex-col justify-between h-full space-y-4">
+          <CardContent className="flex flex-col flex-1 justify-center">
+            <form onSubmit={handlePasswordChange} className="flex flex-col gap-6 flex-1 justify-center">
               <div className="space-y-1">
                 <Label htmlFor="newPassword">New Password</Label>
-                <Input id="newPassword" type="password" placeholder="Enter new password" />
+                <div className="relative">
+                  <Input
+                    id="newPassword"
+                    type={showPassword ? "text" : "password"}
+                    placeholder="Enter new password"
+                    value={newPassword}
+                    onChange={(e) => setNewPassword(e.target.value)}
+                  />
+                  <button
+                    type="button"
+                    className="absolute right-3 top-2/4 -translate-y-1/2 text-muted-foreground"
+                    onClick={() => setShowPassword((prev) => !prev)}
+                    tabIndex={-1}
+                  >
+                    {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                  </button>
+                </div>
               </div>
-              <div className="space-y-1">
+              <div className="space-y-1 mt-2">
                 <Label htmlFor="confirmPassword">Confirm Password</Label>
-                <Input id="confirmPassword" type="password" placeholder="Confirm password" />
+                <div className="relative">
+                  <Input
+                    id="confirmPassword"
+                    type={showConfirmPassword ? "text" : "password"}
+                    placeholder="Confirm password"
+                    value={confirmPassword}
+                    onChange={(e) => setConfirmPassword(e.target.value)}
+                  />
+                  <button
+                    type="button"
+                    className="absolute right-3 top-2/4 -translate-y-1/2 text-muted-foreground"
+                    onClick={() => setShowConfirmPassword((prev) => !prev)}
+                    tabIndex={-1}
+                  >
+                    {showConfirmPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                  </button>
+                </div>
               </div>
-              <Button type="submit" className="w-full mt-4">
+              <Button type="submit" className="w-full">
                 Submit
               </Button>
             </form>
