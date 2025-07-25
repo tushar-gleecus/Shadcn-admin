@@ -1,13 +1,14 @@
-//v1/login
 "use client";
 
 import { useState } from "react";
 import { z } from "zod";
 import Link from "next/link";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { toast } from "sonner";
 import { MailCheck, Eye, EyeOff } from "lucide-react";
+import Cookies from "js-cookie"; // ← NEW!
 
 import {
   Dialog,
@@ -46,6 +47,10 @@ export default function LoginV1() {
   const [showResetSent, setShowResetSent] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
 
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const next = searchParams.get("next");
+
   const loginForm = useForm<z.infer<typeof LoginSchema>>({
     resolver: zodResolver(LoginSchema),
     defaultValues: {
@@ -62,7 +67,6 @@ export default function LoginV1() {
     },
   });
 
-  // --- MAIN UPDATED PART ---
   const onLoginSubmit = async (data: z.infer<typeof LoginSchema>) => {
     try {
       const res = await apiClient.post("/api/admins/login/", {
@@ -74,9 +78,9 @@ export default function LoginV1() {
 
       // Store login details and profile info in localStorage
       localStorage.setItem("access_token", result.token);
+      Cookies.set("access_token", result.token, { expires: 7 }); // <--- THE IMPORTANT LINE!
       localStorage.setItem("admin_id", result.admin.id);
 
-      // NEW: Save these details for AccountSwitcher/profile display
       localStorage.setItem(
         "admin_name",
         `${result.admin.first_name || ""} ${result.admin.last_name || ""}`.trim()
@@ -85,12 +89,11 @@ export default function LoginV1() {
       localStorage.setItem("admin_photo", result.admin.photo || "/avatars/neutral.jpg");
 
       toast.success("Login successful");
-      window.location.href = "/dashboard";
+      router.push(next || "/dashboard/default");
     } catch (err: any) {
       toast.error(err.response?.data?.detail || "Login failed");
     }
   };
-  // --- END UPDATED PART ---
 
   const onResetSubmit = async (data: z.infer<typeof ResetSchema>) => {
     try {
