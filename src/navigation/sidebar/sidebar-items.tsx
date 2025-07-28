@@ -18,6 +18,8 @@ export interface NavSubItem {
   title: string;
   url: string;
   icon?: LucideIcon;
+  comingSoon?: boolean;
+  newTab?: boolean;
 }
 
 export interface NavMainItem {
@@ -25,6 +27,8 @@ export interface NavMainItem {
   url: string;
   icon?: LucideIcon;
   subItems?: NavSubItem[];
+  comingSoon?: boolean;
+  newTab?: boolean;
 }
 
 export interface NavGroup {
