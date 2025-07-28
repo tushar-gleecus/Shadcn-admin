@@ -1,7 +1,11 @@
 import { Button } from '@/components/ui/button';
 import { PlusIcon } from 'lucide-react';
 
-export function Toolbar({ onAdd }) {
+type ToolbarProps = {
+  onAdd: () => void;
+};
+
+export function Toolbar({ onAdd }: ToolbarProps) {
   return (
     <div className="flex justify-between items-center py-4">
       <h2 className="text-lg font-semibold">Admin Users</h2>
